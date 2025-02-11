@@ -18,9 +18,10 @@ int main()
 
 		std::cout << "nelems: ";
 		std::cin >> nelems;
+		nelems *= 1024;
 
 		con.resize(nelems);
-
+		con.threads = nthreads;
 		omp_set_num_threads(int(nthreads));
 
 		for (EC::n i = 0; i < signed(con.size()); ++i)
