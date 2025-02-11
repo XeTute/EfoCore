@@ -46,10 +46,6 @@ namespace EC
 
 		for (; i < im; i += 8)
 		{
-			n iahead = i + 8;
-			_mm_prefetch((char*)&to[iahead], _MM_HINT_T0);
-			_mm_prefetch((char*)&by[iahead], _MM_HINT_T0);
-
 			float* tmpptr = &to[i];
 			__m256 vec0 = _mm256_load_ps(tmpptr);
 			__m256 vec1 = _mm256_load_ps(&by[i]);
@@ -75,7 +71,9 @@ namespace EC
 		sub _sub;
 
 	public:
-		ec() : mem(nullptr), elems(0) {}
+		n threads;
+
+		ec() : mem(nullptr), elems(0), threads(1) {}
 		ec(n _elems) { resize(_elems); }
 
 		void resize(n _elems)
@@ -83,6 +81,7 @@ namespace EC
 			elems = _elems;
 			if (mem) _aligned_free(mem);
 			mem = (float*)_aligned_malloc(elems * sizeof(float), 32);
+			threads = 1;
 		}
 
 		const n& size() { return elems; }
