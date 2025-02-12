@@ -1,10 +1,12 @@
+#include <algorithm>
 #include <cstdint>
+#include <future>
 #include <immintrin.h>
 #include <iostream>
-#include <algorithm>
-#include <vector>
 #include <mutex>
-#include <future>
+#include <numeric>
+#include <thread>
+#include <vector>
 
 #ifndef EC_HPP
 #define EC_HPP
@@ -77,6 +79,8 @@ namespace EC
 			pool[i].get();
 	}
 
+	void sumchunk(float* start, float* end, float* storehere) { *storehere = std::accumulate<float*, float>(start, end, 0); }
+
 	class ec
 	{
 	private:
@@ -84,7 +88,7 @@ namespace EC
 
 		float* mem;
 
-		n elems, threads;
+		n elems, threads, dthreads;
 
 		mul _mul;
 		div _div;
@@ -92,23 +96,45 @@ namespace EC
 		sub _sub;
 
 	public:
-		ec() : mem(nullptr), elems(0), threads(1), pool(1) {}
-		ec(n _elems) { resize(_elems); }
+		ec() : mem(nullptr), elems(0), threads(std::thread::hardware_concurrency()), dthreads(std::thread::hardware_concurrency() - 1), pool(dthreads) {}
+		ec(n _elems) { resize(_elems); setThreads(std::thread::hardware_concurrency()); }
 
 		void resize(n _elems)
 		{
 			elems = _elems;
 			if (mem) _aligned_free(mem);
 			mem = (float*)_aligned_malloc(elems * sizeof(float), 32);
-
-			threads = 1;
-			pool.resize(1);
 		}
 
 		void setThreads(n t)
 		{
 			threads = t;
-			pool.resize(t);
+			dthreads = t - 1;
+			pool.resize(dthreads);
+		}
+
+		float sum()
+		{
+			n chunksize = elems / threads;
+			float* memoff = mem + chunksize;
+			float out = 0.f;
+
+			for (n t = 0; t < dthreads; ++t)
+			{
+				n off = t * chunksize;
+				float* start = mem + off;
+				pool[t] = std::async(std::launch::async, sumchunk, start, memoff + off, start);
+			}
+			{
+				float* start = mem + dthreads * chunksize;
+				sumchunk(start, mem + elems, start);
+			}
+			for (n t = 0; t < dthreads; ++t)
+			{
+				pool[t].get();
+				out += mem[t * chunksize];
+			}
+			return out + mem[dthreads * chunksize];
 		}
 
 		const n& size() { return elems; }
@@ -159,6 +185,7 @@ namespace EC
 		~ec()
 		{
 			if (mem) _aligned_free(mem);
+			pool.~vector();
 		}
 	};
 };
