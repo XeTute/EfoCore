@@ -80,15 +80,16 @@ namespace EC
 	}
 
 	void sumchunk(float* start, float* end, float* storehere) { *storehere = std::accumulate<float*, float>(start, end, 0); }
+	void applychunk(float* start, float* end, float* store, float (*fun) (const float&)) { std::transform(start, end, store, fun); }
 
 	class ec
 	{
 	private:
-		std::vector<std::future<void>> pool;
-
 		float* mem;
 
 		n elems, threads, dthreads;
+
+		std::vector<std::future<void>> pool;
 
 		mul _mul;
 		div _div;
@@ -113,6 +114,12 @@ namespace EC
 			pool.resize(dthreads);
 		}
 
+		void adjustThreads()
+		{
+			threads = std::min(threads, elems);
+			dthreads = threads - 1;
+		}
+
 		float sum()
 		{
 			n chunksize = elems / threads;
@@ -135,6 +142,24 @@ namespace EC
 				out += mem[t * chunksize];
 			}
 			return out + mem[dthreads * chunksize];
+		}
+
+		void apply(float (*fun) (const float&), EC::ec& applyto)
+		{
+			n chunksize = elems / threads;
+			for (n t = 0; t < dthreads; ++t)
+			{
+				n off = t * chunksize;
+				float* start = mem + off;
+				pool[t] = std::async(std::launch::async, applychunk, start, start + chunksize, applyto.mem + off, fun);
+			}
+			{
+				n off = dthreads * chunksize;
+				float* start = mem + off;
+				applychunk(start, mem + elems, applyto.mem + off, fun);
+			}
+			for (n t = 0; t < dthreads; ++t)
+				pool[t].get();
 		}
 
 		const n& size() { return elems; }
@@ -175,6 +200,8 @@ namespace EC
 			doSIMT(elems, tmp.mem, other.mem, threads, pool, _sub);
 			return tmp;
 		}
+
+		void operator= (const EC::ec& other) { std::copy(other.mem, other.mem + elems, this->mem); }
 
 		void operator*= (const EC::ec& other) { doSIMT(elems, this->mem, other.mem, threads, pool, _mul); }
 		void operator/= (const EC::ec& other) { doSIMT(elems, this->mem, other.mem, threads, pool, _div); }
